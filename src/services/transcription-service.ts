@@ -22,6 +22,14 @@ export class TranscriptionService {
     memoPath: string,
     language: string = "en-US"
   ): Promise<TranscriptionResult> {
+    // Validate language code format (e.g., "en-US", "it-IT", "en")
+    if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(language)) {
+      return {
+        success: false,
+        error: `Invalid language code: "${language}". Expected format: "en-US" or "en".`,
+      };
+    }
+
     const fullPath = getAudioFilePath(memoPath);
 
     if (!fullPath) {

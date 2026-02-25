@@ -48,6 +48,17 @@ export function getAudioFilePath(filename: string): string | null {
   }
 
   const audioPath = join(recordingsPath, filename);
+
+  // Prevent directory traversal: ensure resolved path stays within Voice Memos directory
+  if (!isValidVoiceMemosPath(audioPath)) {
+    return null;
+  }
+
+  // Validate file extension
+  if (!audioPath.endsWith(".m4a")) {
+    return null;
+  }
+
   if (existsSync(audioPath)) {
     return audioPath;
   }
