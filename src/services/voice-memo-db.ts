@@ -32,11 +32,11 @@ export class VoiceMemoDatabase {
 
     return {
       id: row.Z_PK,
-      title: row.ZENCRYPTEDTITLE || row.ZPATH,
+      title: row.ZENCRYPTEDTITLE || row.ZPATH || "Untitled",
       customLabel: row.ZCUSTOMLABEL,
       date: coreDataToISO(row.ZDATE),
       duration: row.ZDURATION,
-      path: row.ZPATH,
+      path: row.ZPATH || "",
       fullPath: fullPath || "",
       hasTranscript: fullPath ? hasTranscript(fullPath) : false,
     };
