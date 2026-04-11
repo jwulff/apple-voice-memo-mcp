@@ -9,11 +9,39 @@ import type { TsrpData } from "../../src/types/index.js";
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
+  openSync: vi.fn(),
+  readSync: vi.fn(),
+  closeSync: vi.fn(),
+  fstatSync: vi.fn(),
 }));
 
-import { readFileSync } from "fs";
+import { readFileSync, openSync, readSync, closeSync, fstatSync } from "fs";
 
 const mockedReadFileSync = vi.mocked(readFileSync);
+
+/**
+ * Mock fd-based file reads so that openSync/readSync/fstatSync/closeSync
+ * behave as if reading from `buf`.
+ */
+function mockFdReads(buf: Buffer): void {
+  const fd = 42;
+  (openSync as ReturnType<typeof vi.fn>).mockReturnValue(fd);
+  (fstatSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: buf.length });
+  (closeSync as ReturnType<typeof vi.fn>).mockImplementation(() => {});
+  (readSync as ReturnType<typeof vi.fn>).mockImplementation(
+    (
+      _fd: number,
+      target: Buffer,
+      tOffset: number,
+      length: number,
+      position: number,
+    ) => {
+      const end = Math.min(position + length, buf.length);
+      const copied = buf.copy(target, tOffset, position, end);
+      return copied;
+    },
+  );
+}
 
 describe("mp4-parser utility", () => {
   beforeEach(() => {
@@ -283,19 +311,21 @@ describe("mp4-parser utility", () => {
       const trakContent = createAtom("udta", udtaContent);
       const moovContent = createAtom("trak", trakContent);
       const moovAtom = createAtom("moov", moovContent);
-      mockedReadFileSync.mockReturnValue(moovAtom);
+
+      mockFdReads(moovAtom);
 
       expect(hasTranscript("/path/to/file.m4a")).toBe(true);
     });
 
     it("should return false when tsrp atom doesn't exist", () => {
-      mockedReadFileSync.mockReturnValue(Buffer.from([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]));
+      const buf = Buffer.from([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]);
+      mockFdReads(buf);
 
       expect(hasTranscript("/path/to/file.m4a")).toBe(false);
     });
 
     it("should return false when file doesn't exist", () => {
-      mockedReadFileSync.mockImplementation(() => {
+      (openSync as ReturnType<typeof vi.fn>).mockImplementation(() => {
         throw new Error("ENOENT");
       });
 
