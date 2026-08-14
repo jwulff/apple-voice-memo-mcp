@@ -42,7 +42,7 @@ function readAtom(buffer: Buffer, offset: number): Atom | null {
     size = buffer.length - offset;
   }
 
-  if (size < 8 || offset + size > buffer.length) {
+  if (size < headerSize || offset + size > buffer.length) {
     return null;
   }
 
@@ -97,23 +97,24 @@ export function extractTsrpAtom(filePath: string): TsrpData | null {
       return null;
     }
 
-    // The tsrp atom data starts with "tsrp" prefix before the JSON
-    const dataString = tsrpAtom.data.toString("utf8");
+    return parseTsrpData(tsrpAtom.data);
+  } catch {
+    return null;
+  }
+}
 
-    // Find the start of the JSON (after "tsrp" prefix if present)
-    let jsonStart = 0;
-    if (dataString.startsWith("tsrp")) {
-      jsonStart = 4;
-    }
-
-    // Find the JSON content (look for opening brace)
+function parseTsrpData(data: Buffer): TsrpData | null {
+  try {
+    // The tsrp atom data may start with a "tsrp" prefix before the JSON.
+    const dataString = data.toString("utf8");
+    const jsonStart = dataString.startsWith("tsrp") ? 4 : 0;
     const braceIndex = dataString.indexOf("{", jsonStart);
+
     if (braceIndex === -1) {
       return null;
     }
 
-    const jsonString = dataString.substring(braceIndex);
-    return JSON.parse(jsonString) as TsrpData;
+    return JSON.parse(dataString.substring(braceIndex)) as TsrpData;
   } catch {
     return null;
   }
@@ -185,34 +186,65 @@ export function hasTranscript(filePath: string): boolean {
 function readAtomHeader(
   fd: number,
   offset: number,
-  fileSize: number,
+  fileSize: number
 ): { type: string; size: number; headerSize: number } | null {
   if (offset + 8 > fileSize) return null;
 
   const buf = Buffer.alloc(16);
-  readSync(fd, buf, 0, Math.min(16, fileSize - offset), offset);
+  const bytesRead = readSync(
+    fd,
+    buf,
+    0,
+    Math.min(16, fileSize - offset),
+    offset
+  );
+
+  if (bytesRead < 8) return null;
 
   let size = buf.readUInt32BE(0);
   const type = buf.toString("ascii", 4, 8);
   let headerSize = 8;
 
   if (size === 1) {
-    if (offset + 16 > fileSize) return null;
+    if (bytesRead < 16 || offset + 16 > fileSize) return null;
     size = Number(buf.readBigUInt64BE(8));
     headerSize = 16;
   } else if (size === 0) {
     size = fileSize - offset;
   }
 
-  if (size < 8 || offset + size > fileSize) return null;
+  if (size < headerSize || offset + size > fileSize) return null;
   return { type, size, headerSize };
+}
+
+function readAtomData(
+  fd: number,
+  offset: number,
+  length: number
+): Buffer | null {
+  const data = Buffer.alloc(length);
+  let bytesRead = 0;
+
+  while (bytesRead < length) {
+    const count = readSync(
+      fd,
+      data,
+      bytesRead,
+      length - bytesRead,
+      offset + bytesRead
+    );
+    if (count === 0) return null;
+    bytesRead += count;
+  }
+
+  return data;
 }
 
 function scanForTsrp(
   fd: number,
   fileSize: number,
   offset: number,
-  path: string[],
+  path: string[]
 ): boolean {
   if (path.length === 0) return true;
 
@@ -224,13 +256,15 @@ function scanForTsrp(
     if (!header) break;
 
     if (header.type === target) {
-      if (rest.length === 0) return true;
-      return scanForTsrp(
-        fd,
-        pos + header.size,
-        pos + header.headerSize,
-        rest,
-      );
+      if (rest.length === 0) {
+        const data = readAtomData(
+          fd,
+          pos + header.headerSize,
+          header.size - header.headerSize
+        );
+        return data !== null && parseTsrpData(data) !== null;
+      }
+      return scanForTsrp(fd, pos + header.size, pos + header.headerSize, rest);
     }
     pos += header.size;
   }
