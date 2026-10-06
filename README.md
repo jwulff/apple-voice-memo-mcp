@@ -1,226 +1,153 @@
-# Apple Voice Memo MCP Server
+# MCP Registry
 
-An MCP (Model Context Protocol) server that provides programmatic access to Apple Voice Memos on macOS. Use this to let Claude and other AI assistants interact with your voice recordings.
+The MCP registry provides MCP clients with a list of MCP servers, like an app store for MCP servers.
 
-Pairs well with [whisper-mcp](https://github.com/jwulff/whisper-mcp) for local transcription.
+[**📤 Publish my MCP server**](docs/modelcontextprotocol-io/quickstart.mdx) | [**⚡️ Live API docs**](https://registry.modelcontextprotocol.io/docs) | [**👀 Ecosystem vision**](docs/design/ecosystem-vision.md) | 📖 **[Full documentation](./docs)**
 
-## Features
+## Development Status
 
-- **List voice memos** - Browse all your voice memos with metadata
-- **Get memo details** - Retrieve detailed information about specific recordings
-- **Get audio** - Access the audio file path or base64-encoded audio data
-- **Get transcripts** - Extract transcripts from memos (stored by Apple in the audio file)
-- **Transcribe memos** - Generate transcripts using Apple's SFSpeechRecognizer
+**2025-10-24 update**: The Registry API has entered an **API freeze (v0.1)** 🎉. For the next month or more, the API will remain stable with no breaking changes, allowing integrators to confidently implement support. This freeze applies to v0.1 while development continues on v0. We'll use this period to validate the API in real-world integrations and gather feedback to shape v1 for general availability. Thank you to everyone for your contributions and patience—your involvement has been key to getting us here!
 
-## Requirements
+**2025-09-08 update**: The registry has launched in preview 🎉 ([announcement blog post](https://blog.modelcontextprotocol.io/posts/2025-09-08-mcp-registry-preview/)). While the system is now more stable, this is still a preview release and breaking changes or data resets may occur. A general availability (GA) release will follow later. We'd love your feedback in [GitHub discussions](https://github.com/modelcontextprotocol/registry/discussions/new?category=ideas) or in the [#registry-dev Discord](https://discord.com/channels/1358869848138059966/1369487942862504016) ([joining details here](https://modelcontextprotocol.io/community/communication)).
 
-- macOS Sonoma (14.0) or later (Sequoia recommended for transcription)
-- Node.js 18+
-- Full Disk Access permission (for accessing Voice Memos data)
-- Voice Memos app must have been opened at least once
+Current key maintainers:
+- **Adam Jones** (Anthropic) [@domdomegg](https://github.com/domdomegg)  
+- **Tadas Antanavicius** (PulseMCP) [@tadasant](https://github.com/tadasant)
+- **Toby Padilla** (GitHub) [@toby](https://github.com/toby)
+- **Radoslav (Rado) Dimitrov** (Stacklok) [@rdimitrov](https://github.com/rdimitrov)
 
-## Installation
+## Contributing
 
-```bash
-npm install -g apple-voice-memo-mcp
-```
+We use multiple channels for collaboration - see [modelcontextprotocol.io/community/communication](https://modelcontextprotocol.io/community/communication).
 
-Or use directly with npx:
+Often (but not always) ideas flow through this pipeline:
 
-```bash
-npx apple-voice-memo-mcp
-```
+- **[Discord](https://modelcontextprotocol.io/community/communication)** - Real-time community discussions
+- **[Discussions](https://github.com/modelcontextprotocol/registry/discussions)** - Propose and discuss product/technical requirements
+- **[Issues](https://github.com/modelcontextprotocol/registry/issues)** - Track well-scoped technical work  
+- **[Pull Requests](https://github.com/modelcontextprotocol/registry/pulls)** - Contribute work towards issues
 
-## Configuration
+### Quick start:
 
-### Claude Desktop
+#### Pre-requisites
 
-Add to your Claude Desktop config file:
+- **Docker**
+- **Go 1.24.x**
+- **ko** - Container image builder for Go ([installation instructions](https://ko.build/install/))
+- **golangci-lint v2.4.0**
 
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "apple-voice-memo-mcp": {
-      "command": "npx",
-      "args": ["-y", "apple-voice-memo-mcp"]
-    }
-  }
-}
-```
-
-After editing, restart Claude Desktop.
-
-### Claude Code (CLI)
-
-For Claude Code, add to your project's `.mcp.json` file:
-
-```json
-{
-  "mcpServers": {
-    "apple-voice-memo-mcp": {
-      "command": "npx",
-      "args": ["-y", "apple-voice-memo-mcp"]
-    }
-  }
-}
-```
-
-Or for user-wide configuration, add to `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "apple-voice-memo-mcp": {
-      "command": "npx",
-      "args": ["-y", "apple-voice-memo-mcp"]
-    }
-  }
-}
-```
-
-**Tip**: Use `/mcp` in Claude Code to verify the server is connected.
-
-### Local Development Setup
-
-If running from source instead of npm:
-
-```json
-{
-  "mcpServers": {
-    "apple-voice-memo-mcp": {
-      "command": "node",
-      "args": ["/path/to/apple-voice-memo-mcp/dist/index.js"]
-    }
-  }
-}
-```
-
-### Permissions
-
-1. **Full Disk Access**: Required to read the Voice Memos database
-   - Go to System Settings > Privacy & Security > Full Disk Access
-   - Add your terminal app or Claude Desktop
-
-2. **Speech Recognition** (for transcription):
-   - Required only if using the `transcribe_memo` tool
-   - System will prompt when first used
-
-## MCP Tools
-
-### `list_voice_memos`
-
-List all voice memos with metadata.
-
-**Parameters:**
-- `limit` (optional): Maximum number of results (1-100, default: 50)
-- `offset` (optional): Pagination offset
-- `search` (optional): Search term to filter by title
-
-**Example response:**
-```json
-{
-  "memos": [
-    {
-      "id": 1,
-      "title": "Meeting Notes",
-      "date": "2025-01-07T10:30:00.000Z",
-      "duration": 120.5,
-      "hasTranscript": true
-    }
-  ],
-  "total": 15
-}
-```
-
-### `get_voice_memo`
-
-Get detailed metadata for a specific memo.
-
-**Parameters:**
-- `id` (required): Memo ID
-
-### `get_audio`
-
-Retrieve the audio file.
-
-**Parameters:**
-- `id` (required): Memo ID
-- `format` (optional): "path" or "base64" (default: "path")
-
-### `get_transcript`
-
-Extract transcript from a memo.
-
-**Parameters:**
-- `id` (required): Memo ID
-- `format` (optional): "text", "json", or "timestamped"
-
-### `transcribe_memo`
-
-Transcribe a memo using SFSpeechRecognizer.
-
-**Parameters:**
-- `id` (required): Memo ID
-- `language` (optional): Language code (default: "en-US")
-
-## How It Works
-
-### Data Access
-
-Voice Memos data is stored in:
-- **Database**: `~/Library/Group Containers/group.com.apple.VoiceMemos.shared/Recordings/CloudRecordings.db`
-- **Audio files**: Same directory, `.m4a` format
-
-### Transcript Storage
-
-Apple stores transcripts directly inside the `.m4a` audio files using a custom MPEG-4 atom called `tsrp`. This MCP server parses these atoms to extract transcripts - no separate transcript files exist.
-
-## Development
+#### Running the server
 
 ```bash
-# Clone the repository
-git clone https://github.com/jwulff/apple-voice-memo-mcp.git
-cd apple-voice-memo-mcp
-
-# Install dependencies
-npm install
-
-# Build
-npm run build
-
-# Run in development
-npm run dev
-
-# Test with MCP inspector
-npm run inspector
+# Start full development environment
+make dev-compose
 ```
 
-## Troubleshooting
+This starts the registry at [`localhost:8080`](http://localhost:8080) with PostgreSQL. The database uses ephemeral storage and is reset each time you restart the containers, ensuring a clean state for development and testing.
 
-### "Voice Memos database not found"
+**Note:** The registry uses [ko](https://ko.build) to build container images. The `make dev-compose` command automatically builds the registry image with ko and loads it into your local Docker daemon before starting the services.
 
-1. Ensure you've opened the Voice Memos app at least once
-2. Grant Full Disk Access to your terminal/application
-3. Check if iCloud sync is enabled for Voice Memos
+By default, the registry seeds from the production API with a filtered subset of servers (to keep startup fast). This ensures your local environment mirrors production behavior and all seed data passes validation. For offline development you can seed from a file without validation with `MCP_REGISTRY_SEED_FROM=data/seed.json MCP_REGISTRY_ENABLE_REGISTRY_VALIDATION=false make dev-compose`.
 
-### "No transcript available"
+The setup can be configured with environment variables in [docker-compose.yml](./docker-compose.yml) - see [.env.example](./.env.example) for a reference.
 
-- On macOS Sequoia+, open the memo in Voice Memos app to trigger automatic transcription
-- Older macOS versions don't have automatic transcription
-- Use the `transcribe_memo` tool to generate a transcript via SFSpeechRecognizer
+<details>
+<summary>Alternative: Running a pre-built Docker image</summary>
 
-### Native module binding errors
-
-If you see errors about missing `better_sqlite3.node` bindings:
+Pre-built Docker images are automatically published to GitHub Container Registry:
 
 ```bash
-npm rebuild better-sqlite3
+# Run latest stable release
+docker run -p 8080:8080 ghcr.io/modelcontextprotocol/registry:latest
+
+# Run latest from main branch (continuous deployment)
+docker run -p 8080:8080 ghcr.io/modelcontextprotocol/registry:main
+
+# Run specific release version
+docker run -p 8080:8080 ghcr.io/modelcontextprotocol/registry:v1.0.0
+
+# Run development build from main branch
+docker run -p 8080:8080 ghcr.io/modelcontextprotocol/registry:main-20250906-abc123d
 ```
 
-This recompiles the native module for your current Node.js version.
+**Available tags:** 
+- **Releases**: `latest`, `v1.0.0`, `v1.1.0`, etc.
+- **Continuous**: `main` (latest main branch build)
+- **Development**: `main-<date>-<sha>` (specific commit builds)
 
-## License
+</details>
 
-MIT
+#### Publishing a server
+
+To publish a server, we've built a simple CLI. You can use it with:
+
+```bash
+# Build the latest CLI
+make publisher
+
+# Use it!
+./bin/mcp-publisher --help
+```
+
+See [the publisher guide](./docs/modelcontextprotocol-io/quickstart.mdx) for more details.
+
+#### Other commands
+
+```bash
+# Run lint, unit tests and integration tests
+make check
+```
+
+There are also a few more helpful commands for development. Run `make help` to learn more, or look in [Makefile](./Makefile).
+
+<!--
+For Claude and other AI tools: Always prefer make targets over custom commands where possible.
+-->
+
+## Architecture
+
+### Project Structure
+
+```
+├── cmd/                     # Application entry points
+│   └── publisher/           # Server publishing tool
+├── data/                    # Seed data
+├── deploy/                  # Deployment configuration (Pulumi)
+├── docs/                    # Documentation
+├── internal/                # Private application code
+│   ├── api/                 # HTTP handlers and routing
+│   ├── auth/                # Authentication (GitHub OAuth, JWT, namespace blocking)
+│   ├── config/              # Configuration management
+│   ├── database/            # Data persistence (PostgreSQL)
+│   ├── service/             # Business logic
+│   ├── telemetry/           # Metrics and monitoring
+│   └── validators/          # Input validation
+├── pkg/                     # Public packages
+│   ├── api/                 # API types and structures
+│   │   └── v0/              # Version 0 API types
+│   └── model/               # Data models for server.json
+├── scripts/                 # Development and testing scripts
+├── tests/                   # Integration tests
+└── tools/                   # CLI tools and utilities
+    └── validate-*.sh        # Schema validation tools
+```
+
+### Authentication
+
+Publishing supports multiple authentication methods:
+- **GitHub OAuth** - For publishing by logging into GitHub
+- **GitHub OIDC** - For publishing from GitHub Actions
+- **DNS verification** - For proving ownership of a domain and its subdomains
+- **HTTP verification** - For proving ownership of a domain
+
+The registry validates namespace ownership when publishing. E.g. to publish...:
+- `io.github.domdomegg/my-cool-mcp` you must login to GitHub as `domdomegg`, or be in a GitHub Action on domdomegg's repos
+- `me.adamjones/my-cool-mcp` you must prove ownership of `adamjones.me` via DNS or HTTP challenge
+
+## Community Projects
+
+Check out [community projects](docs/community-projects.md) to explore notable registry-related work created by the community.
+
+## More documentation
+
+See the [documentation](./docs) for more details if your question has not been answered here!

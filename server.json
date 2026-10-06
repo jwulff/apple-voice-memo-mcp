@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.jwulff/apple-voice-memo-mcp",
+  "description": "Access Apple Voice Memos on macOS. List, get audio, extract and generate transcripts.",
+  "repository": {
+    "url": "https://github.com/jwulff/apple-voice-memo-mcp",
+    "source": "github"
+  },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "apple-voice-memo-mcp",
+      "version": "0.1.1",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
