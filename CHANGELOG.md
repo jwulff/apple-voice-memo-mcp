@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a null `ZPATH` (cloud-only or deleted-but-not-purged recordings).
   (#2, thanks @boby-milo)
 
+### Security
+- Memo filenames are validated against the Voice Memos recordings directory
+  on a path boundary before any read, and the `language` passed to the Swift
+  transcription helper must be a BCP 47-shaped tag so it can never be read as
+  a flag. (#1, thanks @matteofrassi)
+
 ### Changed
 - `hasTranscript` scans atom headers with positioned reads instead of loading
   each m4a into memory, cutting the I/O for `list_voice_memos` from the full
