@@ -9,15 +9,71 @@ import type { TsrpData } from "../../src/types/index.js";
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
+  openSync: vi.fn(),
+  readSync: vi.fn(),
+  closeSync: vi.fn(),
+  fstatSync: vi.fn(),
 }));
 
-import { readFileSync } from "fs";
+import { readFileSync, openSync, readSync, closeSync, fstatSync } from "fs";
 
 const mockedReadFileSync = vi.mocked(readFileSync);
 
+function createAtom(type: string, data: Buffer): Buffer {
+  const size = data.length + 8;
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(size, 0);
+  header.write(type, 4, 4, "ascii");
+  return Buffer.concat([header, data]);
+}
+
+function createExtendedAtom(type: string, data: Buffer): Buffer {
+  const size = data.length + 16;
+  const header = Buffer.alloc(16);
+  header.writeUInt32BE(1, 0);
+  header.write(type, 4, 4, "ascii");
+  header.writeBigUInt64BE(BigInt(size), 8);
+  return Buffer.concat([header, data]);
+}
+
+function createTranscriptFile(
+  tsrpData: Buffer,
+  leadingAtoms: Buffer[] = []
+): Buffer {
+  const tsrp = createAtom("tsrp", tsrpData);
+  const udta = createAtom("udta", tsrp);
+  const trak = createAtom("trak", udta);
+  const moov = createAtom("moov", trak);
+  return Buffer.concat([...leadingAtoms, moov]);
+}
+
+/**
+ * Mock fd-based file reads so that openSync/readSync/fstatSync/closeSync
+ * behave as if reading from `buf`.
+ */
+function mockFdReads(buf: Buffer): void {
+  const fd = 42;
+  (openSync as ReturnType<typeof vi.fn>).mockReturnValue(fd);
+  (fstatSync as ReturnType<typeof vi.fn>).mockReturnValue({ size: buf.length });
+  (closeSync as ReturnType<typeof vi.fn>).mockImplementation(() => {});
+  (readSync as ReturnType<typeof vi.fn>).mockImplementation(
+    (
+      _fd: number,
+      target: Buffer,
+      tOffset: number,
+      length: number,
+      position: number
+    ) => {
+      const end = Math.min(position + length, buf.length);
+      const copied = buf.copy(target, tOffset, position, end);
+      return copied;
+    }
+  );
+}
+
 describe("mp4-parser utility", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   afterEach(() => {
@@ -113,19 +169,6 @@ describe("mp4-parser utility", () => {
   });
 
   describe("extractTsrpAtom", () => {
-    // Helper to create a valid MPEG-4 atom structure
-    function createAtom(type: string, data: Buffer): Buffer {
-      const size = data.length + 8;
-      const header = Buffer.alloc(8);
-      header.writeUInt32BE(size, 0);
-      header.write(type, 4, 4, "ascii");
-      return Buffer.concat([header, data]);
-    }
-
-    function createNestedAtoms(atoms: Array<{ type: string; data: Buffer }>): Buffer {
-      return Buffer.concat(atoms.map(a => createAtom(a.type, a.data)));
-    }
-
     it("should return null when file read fails", () => {
       mockedReadFileSync.mockImplementation(() => {
         throw new Error("ENOENT");
@@ -269,33 +312,68 @@ describe("mp4-parser utility", () => {
         locale: { identifier: "en_US", current: 0 },
       });
 
-      // Helper to create atoms
-      function createAtom(type: string, data: Buffer): Buffer {
-        const size = data.length + 8;
-        const header = Buffer.alloc(8);
-        header.writeUInt32BE(size, 0);
-        header.write(type, 4, 4, "ascii");
-        return Buffer.concat([header, data]);
-      }
-
       const tsrpContent = Buffer.from(tsrpJson);
       const udtaContent = createAtom("tsrp", tsrpContent);
       const trakContent = createAtom("udta", udtaContent);
       const moovContent = createAtom("trak", trakContent);
       const moovAtom = createAtom("moov", moovContent);
-      mockedReadFileSync.mockReturnValue(moovAtom);
+
+      mockFdReads(moovAtom);
 
       expect(hasTranscript("/path/to/file.m4a")).toBe(true);
     });
 
+    it("should detect and extract a transcript after a 64-bit mdat atom", () => {
+      const tsrpJson = JSON.stringify({
+        attributedString: {
+          attributeTable: [{ timeRange: [0, 1] }],
+          runs: ["Extended", 0],
+        },
+        locale: { identifier: "en_US", current: 0 },
+      });
+      const file = createTranscriptFile(Buffer.from(tsrpJson), [
+        createExtendedAtom("mdat", Buffer.from("audio data")),
+      ]);
+
+      mockedReadFileSync.mockReturnValue(file);
+      mockFdReads(file);
+
+      expect(hasTranscript("/path/to/extended.m4a")).toBe(true);
+      expect(
+        extractTsrpAtom("/path/to/extended.m4a")?.attributedString.runs
+      ).toContain("Extended");
+    });
+
+    it("should return false when tsrp JSON is malformed", () => {
+      const file = createTranscriptFile(Buffer.from("tsrp{invalid json}"));
+      mockedReadFileSync.mockReturnValue(file);
+      mockFdReads(file);
+
+      expect(hasTranscript("/path/to/malformed.m4a")).toBe(false);
+      expect(extractTsrpAtom("/path/to/malformed.m4a")).toBeNull();
+    });
+
+    it("should reject a 64-bit atom smaller than its header", () => {
+      const malformed = Buffer.alloc(16);
+      malformed.writeUInt32BE(1, 0);
+      malformed.write("moov", 4, 4, "ascii");
+      malformed.writeBigUInt64BE(8n, 8);
+      mockedReadFileSync.mockReturnValue(malformed);
+      mockFdReads(malformed);
+
+      expect(hasTranscript("/path/to/malformed-extended.m4a")).toBe(false);
+      expect(extractTsrpAtom("/path/to/malformed-extended.m4a")).toBeNull();
+    });
+
     it("should return false when tsrp atom doesn't exist", () => {
-      mockedReadFileSync.mockReturnValue(Buffer.from([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]));
+      const buf = Buffer.from([0, 0, 0, 8, 0x66, 0x74, 0x79, 0x70]);
+      mockFdReads(buf);
 
       expect(hasTranscript("/path/to/file.m4a")).toBe(false);
     });
 
     it("should return false when file doesn't exist", () => {
-      mockedReadFileSync.mockImplementation(() => {
+      (openSync as ReturnType<typeof vi.fn>).mockImplementation(() => {
         throw new Error("ENOENT");
       });
 

@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync, openSync, readSync, closeSync, fstatSync } from "fs";
 import type { TsrpData, TranscriptSegment } from "../types/index.js";
 
 /**
@@ -6,8 +6,9 @@ import type { TsrpData, TranscriptSegment } from "../types/index.js";
  *
  * MPEG-4 files are structured as nested "atoms" (also called boxes).
  * Each atom has:
- * - 4 bytes: size (big-endian uint32)
+ * - 4 bytes: size (big-endian uint32; 0 = rest of file, 1 = 64-bit extended)
  * - 4 bytes: type (4 ASCII characters)
+ * - 8 bytes: extended size (only when size == 1, big-endian uint64)
  * - remaining: data (may contain nested atoms)
  *
  * The transcript is stored at: moov/trak/udta/tsrp
@@ -25,18 +26,31 @@ function readAtom(buffer: Buffer, offset: number): Atom | null {
     return null;
   }
 
-  const size = buffer.readUInt32BE(offset);
+  let size = buffer.readUInt32BE(offset);
   const type = buffer.toString("ascii", offset + 4, offset + 8);
+  let headerSize = 8;
 
-  if (size < 8 || offset + size > buffer.length) {
+  if (size === 1) {
+    // 64-bit extended size (ISO 14496-12 §4.2)
+    if (offset + 16 > buffer.length) {
+      return null;
+    }
+    size = Number(buffer.readBigUInt64BE(offset + 8));
+    headerSize = 16;
+  } else if (size === 0) {
+    // Atom extends to end of buffer
+    size = buffer.length - offset;
+  }
+
+  if (size < headerSize || offset + size > buffer.length) {
     return null;
   }
 
   return {
     type,
     size,
-    dataOffset: offset + 8,
-    data: buffer.subarray(offset + 8, offset + size),
+    dataOffset: offset + headerSize,
+    data: buffer.subarray(offset + headerSize, offset + size),
   };
 }
 
@@ -83,23 +97,24 @@ export function extractTsrpAtom(filePath: string): TsrpData | null {
       return null;
     }
 
-    // The tsrp atom data starts with "tsrp" prefix before the JSON
-    const dataString = tsrpAtom.data.toString("utf8");
+    return parseTsrpData(tsrpAtom.data);
+  } catch {
+    return null;
+  }
+}
 
-    // Find the start of the JSON (after "tsrp" prefix if present)
-    let jsonStart = 0;
-    if (dataString.startsWith("tsrp")) {
-      jsonStart = 4;
-    }
-
-    // Find the JSON content (look for opening brace)
+function parseTsrpData(data: Buffer): TsrpData | null {
+  try {
+    // The tsrp atom data may start with a "tsrp" prefix before the JSON.
+    const dataString = data.toString("utf8");
+    const jsonStart = dataString.startsWith("tsrp") ? 4 : 0;
     const braceIndex = dataString.indexOf("{", jsonStart);
+
     if (braceIndex === -1) {
       return null;
     }
 
-    const jsonString = dataString.substring(braceIndex);
-    return JSON.parse(jsonString) as TsrpData;
+    return JSON.parse(dataString.substring(braceIndex)) as TsrpData;
   } catch {
     return null;
   }
@@ -149,6 +164,110 @@ export function parseTsrpToSegments(tsrpData: TsrpData): TranscriptSegment[] {
   return segments;
 }
 
+/**
+ * Check if a voice memo has an embedded transcript by scanning atom headers
+ * without reading the full file into memory. This avoids buffering large
+ * mdat payloads (often 30-50 MB each) when only a boolean is needed.
+ */
 export function hasTranscript(filePath: string): boolean {
-  return extractTsrpAtom(filePath) !== null;
+  try {
+    const fd = openSync(filePath, "r");
+    try {
+      const fileSize = fstatSync(fd).size;
+      return scanForTsrp(fd, fileSize, 0, ["moov", "trak", "udta", "tsrp"]);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    return false;
+  }
+}
+
+function readAtomHeader(
+  fd: number,
+  offset: number,
+  fileSize: number
+): { type: string; size: number; headerSize: number } | null {
+  if (offset + 8 > fileSize) return null;
+
+  const buf = Buffer.alloc(16);
+  const bytesRead = readSync(
+    fd,
+    buf,
+    0,
+    Math.min(16, fileSize - offset),
+    offset
+  );
+
+  if (bytesRead < 8) return null;
+
+  let size = buf.readUInt32BE(0);
+  const type = buf.toString("ascii", 4, 8);
+  let headerSize = 8;
+
+  if (size === 1) {
+    if (bytesRead < 16 || offset + 16 > fileSize) return null;
+    size = Number(buf.readBigUInt64BE(8));
+    headerSize = 16;
+  } else if (size === 0) {
+    size = fileSize - offset;
+  }
+
+  if (size < headerSize || offset + size > fileSize) return null;
+  return { type, size, headerSize };
+}
+
+function readAtomData(
+  fd: number,
+  offset: number,
+  length: number
+): Buffer | null {
+  const data = Buffer.alloc(length);
+  let bytesRead = 0;
+
+  while (bytesRead < length) {
+    const count = readSync(
+      fd,
+      data,
+      bytesRead,
+      length - bytesRead,
+      offset + bytesRead
+    );
+    if (count === 0) return null;
+    bytesRead += count;
+  }
+
+  return data;
+}
+
+function scanForTsrp(
+  fd: number,
+  fileSize: number,
+  offset: number,
+  path: string[]
+): boolean {
+  if (path.length === 0) return true;
+
+  const [target, ...rest] = path;
+  let pos = offset;
+
+  while (pos < fileSize) {
+    const header = readAtomHeader(fd, pos, fileSize);
+    if (!header) break;
+
+    if (header.type === target) {
+      if (rest.length === 0) {
+        const data = readAtomData(
+          fd,
+          pos + header.headerSize,
+          header.size - header.headerSize
+        );
+        return data !== null && parseTsrpData(data) !== null;
+      }
+      return scanForTsrp(fd, pos + header.size, pos + header.headerSize, rest);
+    }
+    pos += header.size;
+  }
+
+  return false;
 }
