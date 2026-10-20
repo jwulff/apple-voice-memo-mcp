@@ -8,6 +8,7 @@ import {
 import { VoiceMemoDatabase } from "./services/voice-memo-db.js";
 import { TranscriptExtractor } from "./services/transcript-extractor.js";
 import { TranscriptionService } from "./services/transcription-service.js";
+import { VERSION } from "./version.js";
 
 import {
   listMemos,
@@ -45,7 +46,7 @@ export class VoiceMemoMCPServer {
     this.server = new Server(
       {
         name: "apple-voice-memo-mcp",
-        version: "0.1.0",
+        version: VERSION,
       },
       {
         capabilities: {

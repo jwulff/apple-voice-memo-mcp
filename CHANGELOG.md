@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transcription helper must be a BCP 47-shaped tag so it can never be read as
   a flag. (#1, thanks @matteofrassi)
 
+### Fixed (release)
+- The server now advertises its real package version over MCP instead of a
+  hardcoded `0.1.0`; the value is read from `package.json` at startup.
+
 ### Changed
 - `hasTranscript` scans atom headers with positioned reads instead of loading
   each m4a into memory, cutting the I/O for `list_voice_memos` from the full

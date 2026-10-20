@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { createRequire } from "module";
 
 // Mock all dependencies before importing
 vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
@@ -40,6 +41,10 @@ import { TranscriptionService } from "../src/services/transcription-service.js";
 
 const MockServer = vi.mocked(Server);
 
+const packageVersion = (
+  createRequire(import.meta.url)("../package.json") as { version: string }
+).version;
+
 describe("VoiceMemoMCPServer", () => {
   let mockServerInstance: {
     setRequestHandler: ReturnType<typeof vi.fn>;
@@ -64,7 +69,7 @@ describe("VoiceMemoMCPServer", () => {
       expect(Server).toHaveBeenCalledWith(
         {
           name: "apple-voice-memo-mcp",
-          version: "0.1.0",
+          version: packageVersion,
         },
         {
           capabilities: {
@@ -128,7 +133,8 @@ describe("VoiceMemoMCPServer", () => {
       new VoiceMemoMCPServer();
 
       // Get the ListTools handler
-      const listToolsHandler = mockServerInstance.setRequestHandler.mock.calls[0][1];
+      const listToolsHandler =
+        mockServerInstance.setRequestHandler.mock.calls[0][1];
 
       const result = await listToolsHandler();
 
@@ -148,7 +154,8 @@ describe("VoiceMemoMCPServer", () => {
       mockDbInstance.listMemos.mockReturnValue({ memos: [], total: 0 });
 
       // Get the CallTool handler
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -166,7 +173,8 @@ describe("VoiceMemoMCPServer", () => {
       const mockDbInstance = vi.mocked(VoiceMemoDatabase).mock.results[0].value;
       mockDbInstance.getMemo.mockReturnValue(null);
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -183,7 +191,8 @@ describe("VoiceMemoMCPServer", () => {
       const mockDbInstance = vi.mocked(VoiceMemoDatabase).mock.results[0].value;
       mockDbInstance.getMemo.mockReturnValue(null);
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -200,7 +209,8 @@ describe("VoiceMemoMCPServer", () => {
       const mockDbInstance = vi.mocked(VoiceMemoDatabase).mock.results[0].value;
       mockDbInstance.getMemo.mockReturnValue(null);
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -217,7 +227,8 @@ describe("VoiceMemoMCPServer", () => {
       const mockDbInstance = vi.mocked(VoiceMemoDatabase).mock.results[0].value;
       mockDbInstance.getMemo.mockReturnValue(null);
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -232,7 +243,8 @@ describe("VoiceMemoMCPServer", () => {
     it("should handle unknown tool", async () => {
       new VoiceMemoMCPServer();
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -252,7 +264,8 @@ describe("VoiceMemoMCPServer", () => {
         throw new Error("Database error");
       });
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
@@ -272,7 +285,8 @@ describe("VoiceMemoMCPServer", () => {
         throw "string error";
       });
 
-      const callToolHandler = mockServerInstance.setRequestHandler.mock.calls[1][1];
+      const callToolHandler =
+        mockServerInstance.setRequestHandler.mock.calls[1][1];
 
       const result = await callToolHandler({
         params: {
