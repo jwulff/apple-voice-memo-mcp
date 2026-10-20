@@ -3,6 +3,16 @@ import { getAudioFilePath } from "../utils/paths.js";
 import type { TranscriptionResult, TranscriptSegment } from "../types/index.js";
 
 /**
+ * Shape of a BCP 47 language tag: a 2-3 letter language followed by any
+ * number of 2-8 character alphanumeric subtags. This covers every locale
+ * SFSpeechRecognizer reports (including es-419, yue-CN, hi-Latn, and
+ * hi-IN-translit) while rejecting anything that could be read as a flag by
+ * the Swift helper. spawn() runs without a shell, so a value is never shell
+ * interpreted; the exposure is argument injection, not command injection.
+ */
+const LANGUAGE_CODE_PATTERN = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+
+/**
  * Service for transcribing audio files using Apple's SFSpeechRecognizer.
  *
  * This requires a Swift helper CLI tool to be built and available.
@@ -22,11 +32,10 @@ export class TranscriptionService {
     memoPath: string,
     language: string = "en-US"
   ): Promise<TranscriptionResult> {
-    // Validate language code format (e.g., "en-US", "it-IT", "en")
-    if (!/^[a-z]{2}(-[A-Z]{2})?$/.test(language)) {
+    if (!LANGUAGE_CODE_PATTERN.test(language)) {
       return {
         success: false,
-        error: `Invalid language code: "${language}". Expected format: "en-US" or "en".`,
+        error: `Invalid language code: "${language}". Expected a BCP 47 tag such as "en-US", "en", or "es-419".`,
       };
     }
 

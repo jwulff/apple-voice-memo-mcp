@@ -56,7 +56,9 @@ describe("TranscriptionService", () => {
       const result = await service.transcribe("memo.m4a");
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Swift transcription helper not configured");
+      expect(result.error).toContain(
+        "Swift transcription helper not configured"
+      );
     });
 
     it("should run swift transcriber and return JSON result", async () => {
@@ -190,6 +192,73 @@ describe("TranscriptionService", () => {
 
       expect(result.success).toBe(true);
       expect(result.transcript).toBe("Hello world");
+    });
+  });
+
+  describe("language validation", () => {
+    function runHelper(): MockProcess {
+      const mockProcess = new MockProcess();
+      mockedSpawn.mockReturnValue(mockProcess as never);
+      queueMicrotask(() => {
+        mockProcess.stdout.emit("data", '{"text":"ok","segments":[]}');
+        mockProcess.emit("close", 0);
+      });
+      return mockProcess;
+    }
+
+    it.each([
+      "en-US",
+      "en",
+      "it-IT",
+      "es-419",
+      "yue-CN",
+      "wuu-CN",
+      "hi-Latn",
+      "hi-IN-translit",
+    ])("accepts %s and passes it to the helper verbatim", async (language) => {
+      runHelper();
+
+      const service = new TranscriptionService("/path/to/helper");
+      const result = await service.transcribe("memo.m4a", language);
+
+      expect(result.success).toBe(true);
+      expect(mockedSpawn).toHaveBeenCalledTimes(1);
+      const [, args, options] = mockedSpawn.mock.calls[0];
+      expect(args).toEqual([
+        "/path/to/memo.m4a",
+        "--language",
+        language,
+        "--json",
+      ]);
+      // argv must stay literal: never spawn through a shell.
+      expect(options).toBeUndefined();
+    });
+
+    it.each([
+      "--malicious-flag",
+      "-x",
+      "'; rm -rf /;",
+      "en US",
+      "en_US",
+      "",
+      "e",
+      "en-",
+      "en-US-toolongsubtag",
+    ])("rejects %j before the helper is spawned", async (language) => {
+      const service = new TranscriptionService("/path/to/helper");
+      const result = await service.transcribe("memo.m4a", language);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Invalid language code");
+      expect(mockedSpawn).not.toHaveBeenCalled();
+    });
+
+    it("rejects an invalid language before checking the audio path", async () => {
+      const service = new TranscriptionService("/path/to/helper");
+      const result = await service.transcribe("memo.m4a", "--json");
+
+      expect(result.success).toBe(false);
+      expect(mockedGetAudioFilePath).not.toHaveBeenCalled();
     });
   });
 });

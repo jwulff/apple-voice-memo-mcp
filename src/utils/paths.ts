@@ -1,5 +1,5 @@
 import { homedir } from "os";
-import { join } from "path";
+import { join, relative, isAbsolute, sep } from "path";
 import { existsSync } from "fs";
 
 // Voice Memos locations have changed across macOS versions
@@ -49,13 +49,11 @@ export function getAudioFilePath(filename: string): string | null {
 
   const audioPath = join(recordingsPath, filename);
 
-  // Prevent directory traversal: ensure resolved path stays within Voice Memos directory
+  // Prevent directory traversal: the resolved path must stay inside the
+  // Voice Memos recordings directory. There is deliberately no extension
+  // check here: Voice Memos stores recordings as both .m4a and .qta, and
+  // this resolver runs for every database row.
   if (!isValidVoiceMemosPath(audioPath)) {
-    return null;
-  }
-
-  // Validate file extension
-  if (!audioPath.endsWith(".m4a")) {
     return null;
   }
 
@@ -72,7 +70,14 @@ export function isValidVoiceMemosPath(path: string): boolean {
     return false;
   }
 
-  // Ensure the path is within the Voice Memos directory (prevent directory traversal)
-  const normalizedPath = join(path);
-  return normalizedPath.startsWith(recordingsPath);
+  // Compare on a path boundary, not a string prefix: a plain startsWith()
+  // check accepts sibling directories such as "Recordings-evil". The check
+  // is lexical and does not resolve symlinks.
+  const rel = relative(recordingsPath, join(path));
+  return (
+    rel !== "" &&
+    rel !== ".." &&
+    !rel.startsWith(`..${sep}`) &&
+    !isAbsolute(rel)
+  );
 }
