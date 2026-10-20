@@ -41,7 +41,10 @@ export function getDatabasePath(): string | null {
   return null;
 }
 
-export function getAudioFilePath(filename: string): string | null {
+export function getAudioFilePath(filename: string | null): string | null {
+  if (!filename) {
+    return null;
+  }
   const recordingsPath = getVoiceMemosPath();
   if (!recordingsPath) {
     return null;

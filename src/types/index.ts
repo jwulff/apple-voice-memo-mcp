@@ -42,7 +42,7 @@ export interface TranscriptionResult {
 // Raw database row from CloudRecordings.db
 export interface CloudRecordingRow {
   Z_PK: number;
-  ZPATH: string;
+  ZPATH: string | null;
   ZCUSTOMLABEL: string | null;
   ZENCRYPTEDTITLE: string | null;
   ZDATE: number; // Core Data timestamp
